@@ -147,7 +147,7 @@ def audit_tda_encapsulation(
 
     opaque_count = sum(1 for t in all_tdas if t.is_opaque)
     transparent_count = sum(1 for t in all_tdas if not t.is_opaque)
-    passed = len(violations) == 0
+    passed = not any(v.severity == "ERROR" for v in violations)
 
     return TdaAuditReport(
         passed=passed,
