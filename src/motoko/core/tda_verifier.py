@@ -1,54 +1,84 @@
-"""Verificación de opacidad y encapsulamiento de Tipos Abstractos de Datos en C."""
+"""Verificación de opacidad y encapsulamiento de Tipos Abstractos de Datos en C usando Tree-Sitter AST."""
 
-import re
+from __future__ import annotations
+
 from pathlib import Path
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
+
+import tree_sitter_c as tsc
+from tree_sitter import Language, Parser, Node
+
 from motoko.core.models import TdaDefinition, EncapsulationViolation, TdaAuditReport
 
-# Patrones para detectar TDAs opacos vs transparentes en cabeceras
-OPAQUE_TYPEDEF_PATTERN = re.compile(
-    r'typedef\s+struct\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*;|'
-    r'typedef\s+struct\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*;'
-)
-TRANSPARENT_STRUCT_PATTERN = re.compile(
-    r'typedef\s+struct\s*(?:[a-zA-Z_][a-zA-Z0-9_]*)?\s*\{([^}]+)\}\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*;'
-)
+_C_LANGUAGE: Optional[Language] = None
+_PARSER: Optional[Parser] = None
+
+
+def get_c_parser() -> Parser:
+    global _C_LANGUAGE, _PARSER
+    if _PARSER is None:
+        _C_LANGUAGE = Language(tsc.language())
+        _PARSER = Parser(_C_LANGUAGE)
+    return _PARSER
+
+
+def _find_identifier(node: Node) -> Optional[str]:
+    """Encuentra el identificador dentro de un declarador AST."""
+    if node.type in ("identifier", "type_identifier", "field_identifier"):
+        return node.text.decode("utf-8", errors="replace")
+    for child in node.children:
+        if child.type in ("identifier", "type_identifier", "field_identifier"):
+            return child.text.decode("utf-8", errors="replace")
+        elif child.type in ("pointer_declarator", "array_declarator", "parenthesized_declarator"):
+            res = _find_identifier(child)
+            if res:
+                return res
+    return None
 
 
 def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
-    """Extrae las definiciones de TDAs en una cabecera, catalogándolos como opacos o transparentes."""
-    tdas = []
+    """Extrae las definiciones de TDAs en una cabecera, catalogándolos como opacos o transparentes con AST."""
+    tdas: List[TdaDefinition] = []
     content = header_path.read_text(encoding="utf-8", errors="replace")
+    source_bytes = content.encode("utf-8")
+    parser = get_c_parser()
+    tree = parser.parse(source_bytes)
 
-    # 1. Buscar structs con cuerpo expuesto (transparente)
-    for match in TRANSPARENT_STRUCT_PATTERN.finditer(content):
-        fields_raw = match.group(1)
-        name = match.group(2)
-        fields = []
-        for decl in fields_raw.split(";"):
-            parts = decl.strip().split()
-            if parts:
-                field_name = parts[-1].replace("*", "").strip()
-                if field_name:
-                    fields.append(field_name)
-        tdas.append(TdaDefinition(
-            name=name,
-            is_opaque=False,
-            header_path=str(header_path),
-            declared_fields=fields
-        ))
+    def _traverse(node: Node) -> None:
+        if node.type == "type_definition":
+            type_node = node.child_by_field_name("type")
+            decl_node = node.child_by_field_name("declarator")
+            ident = _find_identifier(decl_node) if decl_node else None
 
-    # 2. Buscar structs opacos (solo declaración forward)
-    for match in OPAQUE_TYPEDEF_PATTERN.finditer(content):
-        name = match.group(2) or match.group(4)
-        if name and not any(t.name == name for t in tdas):
-            tdas.append(TdaDefinition(
-                name=name,
-                is_opaque=True,
-                header_path=str(header_path),
-                declared_fields=[]
-            ))
+            if ident and type_node and type_node.type == "struct_specifier":
+                body = type_node.child_by_field_name("body")
+                if body:
+                    fields = []
+                    for f in body.children:
+                        if f.type == "field_declaration":
+                            f_decl = f.child_by_field_name("declarator")
+                            if f_decl:
+                                f_name = _find_identifier(f_decl)
+                                if f_name:
+                                    fields.append(f_name)
+                    tdas.append(TdaDefinition(
+                        name=ident,
+                        is_opaque=False,
+                        header_path=str(header_path),
+                        declared_fields=fields
+                    ))
+                else:
+                    tdas.append(TdaDefinition(
+                        name=ident,
+                        is_opaque=True,
+                        header_path=str(header_path),
+                        declared_fields=[]
+                    ))
 
+        for child in node.children:
+            _traverse(child)
+
+    _traverse(tree.root_node)
     return tdas
 
 
@@ -57,7 +87,7 @@ def audit_tda_encapsulation(
     client_files: List[Path],
     implementation_files: List[Path]
 ) -> TdaAuditReport:
-    """Verifica que el código cliente no viole el encapsulamiento de los TDAs."""
+    """Verifica que el código cliente no viole el encapsulamiento de los TDAs usando Tree-Sitter AST."""
     all_tdas: List[TdaDefinition] = []
     for h in headers:
         all_tdas.extend(extract_tdas_from_header(h))
@@ -75,42 +105,55 @@ def audit_tda_encapsulation(
                 line_number=1,
                 line_content=f"typedef struct {{ ... }} {tda.name};",
                 message=f"El TDA '{tda.name}' expone sus campos internos en la cabecera pública {Path(tda.header_path).name}.",
-                suggestion="Hacé el TDA opaco: declará 'typedef struct s_{name} t_{name};' en el .h y definí el struct completo dentro del .c de implementación."
+                suggestion=f"Hacé el TDA opaco: declará 'typedef struct s_{tda.name} t_{tda.name};' en el .h y definí el struct completo dentro del .c de implementación."
             ))
 
-    # MOT002: Acceso directo a campos del struct en archivos cliente
-    # Por ejemplo, si el cliente hace `tda->campo` o `puntero->primero`
+    # MOT002: Acceso directo a campos del struct en archivos cliente mediante AST
     impl_names = {f.name for f in implementation_files}
+    parser = get_c_parser()
+
     for client in client_files:
         if client.name in impl_names:
             continue
 
         content = client.read_text(encoding="utf-8", errors="replace")
-        lines = content.splitlines()
+        source_bytes = content.encode("utf-8")
+        tree = parser.parse(source_bytes)
 
-        for idx, line in enumerate(lines, 1):
-            stripped = line.strip()
-            if stripped.startswith("//") or stripped.startswith("/*"):
-                continue
+        def _traverse_client(node: Node) -> None:
+            if node.type == "field_expression":
+                field_node = node.child_by_field_name("field")
+                if field_node:
+                    field_name = field_node.text.decode("utf-8", errors="replace")
+                    for tda in all_tdas:
+                        if field_name in tda.declared_fields:
+                            line_no = node.start_point.row + 1
+                            raw_expr = node.text.decode("utf-8", errors="replace")
+                            violations.append(EncapsulationViolation(
+                                code="MOT002",
+                                severity="ERROR",
+                                tda_name=tda.name,
+                                file_path=str(client),
+                                line_number=line_no,
+                                line_content=raw_expr,
+                                message=f"Violación de encapsulamiento: Acceso directo al campo '{field_name}' del TDA '{tda.name}' en archivo cliente {client.name}.",
+                                suggestion=f"Utilizá las primitivas públicas del TDA en lugar de desreferenciar campos internos directamente ('{raw_expr}')."
+                            ))
 
-            for tda in all_tdas:
-                for f in tda.declared_fields:
-                    # Detectar variable->campo
-                    if re.search(rf'->\s*{re.escape(f)}\b', line):
-                        violations.append(EncapsulationViolation(
-                            code="MOT002",
-                            severity="ERROR",
-                            tda_name=tda.name,
-                            file_path=str(client),
-                            line_number=idx,
-                            line_content=stripped,
-                            message=f"Violación de encapsulamiento: acceso directo al campo '{f}' del TDA '{tda.name}'.",
-                            suggestion=f"Utilizá las primitivas públicas del TDA (getters/métodos) provistas en la cabecera en lugar de desreferenciar campos directamente."
-                        ))
+            for child in node.children:
+                _traverse_client(child)
 
-    has_errors = any(v.severity == "ERROR" for v in violations)
+        _traverse_client(tree.root_node)
+
+    opaque_count = sum(1 for t in all_tdas if t.is_opaque)
+    transparent_count = sum(1 for t in all_tdas if not t.is_opaque)
+    passed = len(violations) == 0
+
     return TdaAuditReport(
+        passed=passed,
         tdas_analyzed=all_tdas,
-        violations=violations,
-        passed=not has_errors
+        opaque_tdas_count=opaque_count,
+        transparent_tdas_count=transparent_count,
+        violations_count=len(violations),
+        violations=violations
     )
