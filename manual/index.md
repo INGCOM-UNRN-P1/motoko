@@ -346,3 +346,12 @@ Podés encadenar `motoko` con otras herramientas del ecosistema en una única l�
 motoko check include/ src/ && ripley check src/
 ````
 
+---
+
+(manual-motoko-seccion-plugins)=
+## 9. Extensión, Desarrollo de Plugins y API Python
+
+Para crear tus propias reglas, conectores de evaluación o integrar `motoko` programáticamente en pipelines de CI/CD:
+
+- 👉 **Consultá la guía completa:** [Guía de Extensión y Creación de Plugins](plugins.md)
+
