@@ -176,3 +176,52 @@ check-motoko:
 ````
 
 Ejecutá `make check-motoko` antes de cada commit para asegurar que tu código conserve el estado de aprobación.
+
+---
+
+(manual-motoko-arquitectura)=
+## 7. Arquitectura Interna y Mecanismo Técnico
+
+La herramienta **`motoko`** implementa un motor de alta precisión basado en:
+
+- **Tecnología Núcleo:** `Tree-Sitter C AST + Incomplete Types Visibility Checker + Invariant Contract Validator`.
+- **Aislamiento y Determinismo:** Diseñada para operar sin efectos colaterales en entornos de integración continua (CI), terminales de estudiantes y servidores docentes headless.
+- **Manejo de Errores Pedagógico:** Todo fallo de sintaxis, memoria o lógica se traduce en una acción prescriptiva concreta con su respectiva justificación técnica.
+
+---
+
+(manual-motoko-ecosistema)=
+## 8. Integración y Conexión con el Ecosistema
+
+````{note}
+Ninguna herramienta opera de forma aislada. **`motoko`** forma parte del pipeline integral de evaluación, verificación y enseñanza de la cátedra.
+````
+
+### Diagrama de Flujo e Interoperabilidad
+
+````{mermaid}
+graph TD
+    HDR[include/*.h: Tipos Opacos] --> MOT[Motoko: Verificador de TDA]
+    SRC[src/*.c: Código Cliente] --> MOT
+    MOT -->|Detección de Violación de Acceso| RIP[Ripley: Reglas de Modularidad]
+    MOT -->|Validación de Encapsulamiento| CRB[Corbel: Documentación de APIs]
+````
+
+### Matriz de Intercambio de Datos
+
+| Canal | Herramientas Conectadas | Tipo de Datos Transferidos |
+| :--- | :--- | :--- |
+| **Entradas (Inputs)** | - `Código cliente (.c) y headers públicos (.h) de TDAs` | Código fuente, AST, binarios, testcases, contratos |
+| **Salidas (Outputs)** | - `ripley (reglas 0x2000h de modularidad)`
+- `corbel (verificación de opacidad)` | Informes Markdown, diagnósticos Rich, JSON, actas |
+| **Sincronización** | `corbel`, `parker`, `ripley` | Validación cruzada, flags compartidos y autofix |
+
+### Pipeline de Integración Recomendado
+
+Podés encadenar `motoko` con otras herramientas del ecosistema en una única línea de comando:
+
+````{code-block} bash
+# Pipeline de integración típico
+motoko check include/ src/ && ripley check src/
+````
+
