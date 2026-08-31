@@ -18,12 +18,32 @@ app = typer.Typer(
 console = Console()
 
 
-@app.command()
+def generar_seccion_markdown(report: TdaAuditReport) -> str:
+    """Genera sección de auditoría de encapsulamiento de TDAs para Dredd."""
+    lines = ["## Encapsulamiento y Opacidad de TDAs (Motoko)\n"]
+    lines.append(f"- **TDAs analizados:** {len(report.tdas_analyzed)}")
+    lines.append(f"- **Violaciones de encapsulamiento:** {len(report.violations)}\n")
+    if report.passed:
+        lines.append("> [!TIP]\n> **Encapsulamiento Estricto:** Los Tipos de Datos Abstractos respetan la opacidad y no exponen su estructura interna a los clientes.\n")
+    else:
+        lines.append("> [!WARNING]\n> **Ruptura de Encapsulamiento:** Se detectaron accesos directos a campos privados de structs fuera de su módulo de implementación.\n")
+        lines.append("| TDA | Ubicación | Código | Severidad | Diagnóstico | Sugerencia |")
+        lines.append("| :--- | :--- | :---: | :---: | :--- | :--- |")
+        for v in report.violations:
+            loc = f"`{Path(v.file_path).name}:{v.line_number}`"
+            lines.append(f"| `{v.tda_name}` | {loc} | `{v.code}` | **{v.severity}** | {v.message} | {v.suggestion} |")
+        lines.append("")
+    return "\n".join(lines)
+
+
+@app.command("verify")
+@app.command("check")
 def verify(
     headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) que definen TDAs"),
     clients: List[Path] = typer.Option([], "--client", "-c", help="Archivos cliente (.c) que usan el TDA"),
     impls: List[Path] = typer.Option([], "--impl", "-i", help="Archivos de implementación (.c) del TDA"),
-    json_output: bool = typer.Option(False, "--json", help="Emitir salida en formato JSON estructurado")
+    json_output: bool = typer.Option(False, "--json", help="Emitir salida en formato JSON estructurado"),
+    output_md: Optional[Path] = typer.Option(None, "--md", "--output-md", help="Generar sección de reporte en formato Markdown para fusión en Dredd."),
 ):
     """Verifica que los TDAs sean opacos y no sufran accesos directos a sus campos internos."""
     # Si no se pasan clientes explícitos, buscar .c en los directorios de los headers
@@ -33,6 +53,13 @@ def verify(
             clients.extend(list(parent.glob("*.c")))
 
     report = audit_tda_encapsulation(headers, clients, impls)
+
+    if output_md:
+        md_text = generar_seccion_markdown(report)
+        output_md.parent.mkdir(parents=True, exist_ok=True)
+        output_md.write_text(md_text, encoding="utf-8")
+        console.print(f"[bold green]✓ Sección Markdown generada en:[/bold green] {output_md}")
+        raise typer.Exit(code=0 if report.passed else 1)
 
     if json_output:
         print(json.dumps(report.model_dump(), indent=2, ensure_ascii=False))
@@ -69,6 +96,29 @@ def verify(
     console.print(table)
     if not report.passed:
         raise typer.Exit(code=1)
+
+
+@app.command("report")
+def report_cmd(
+    headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) que definen TDAs"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Ruta de destino del archivo Markdown."),
+    clients: List[Path] = typer.Option([], "--client", "-c", help="Archivos cliente (.c) que usan el TDA"),
+    impls: List[Path] = typer.Option([], "--impl", "-i", help="Archivos de implementación (.c) del TDA"),
+):
+    """Genera directamente la sección de reporte Markdown de MOTOKO para Dredd."""
+    if not clients:
+        for h in headers:
+            parent = h.parent
+            clients.extend(list(parent.glob("*.c")))
+
+    report = audit_tda_encapsulation(headers, clients, impls)
+    md_content = generar_seccion_markdown(report)
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(md_content, encoding="utf-8")
+        console.print(f"[bold green]✓ Reporte Markdown generado en:[/bold green] {output}")
+    else:
+        print(md_content)
 
 
 @app.command()
