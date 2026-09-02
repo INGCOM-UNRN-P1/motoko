@@ -38,8 +38,10 @@ def _find_identifier(node: Node) -> Optional[str]:
 
 def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
     """Extrae las definiciones de TDAs en una cabecera, catalogándolos como opacos o transparentes con AST."""
+    if not Path(header_path).is_file():
+        return []
     tdas: List[TdaDefinition] = []
-    content = header_path.read_text(encoding="utf-8", errors="replace")
+    content = Path(header_path).read_text(encoding="utf-8", errors="replace")
     source_bytes = content.encode("utf-8")
     parser = get_c_parser()
     tree = parser.parse(source_bytes)
@@ -88,8 +90,12 @@ def audit_tda_encapsulation(
     implementation_files: List[Path]
 ) -> TdaAuditReport:
     """Verifica que el código cliente no viole el encapsulamiento de los TDAs usando Tree-Sitter AST."""
+    valid_headers = [Path(h) for h in headers if Path(h).is_file()]
+    valid_clients = [Path(c) for c in client_files if Path(c).is_file()]
+    valid_impls = [Path(i) for i in implementation_files if Path(i).is_file()]
+
     all_tdas: List[TdaDefinition] = []
-    for h in headers:
+    for h in valid_headers:
         all_tdas.extend(extract_tdas_from_header(h))
 
     violations: List[EncapsulationViolation] = []
@@ -109,10 +115,10 @@ def audit_tda_encapsulation(
             ))
 
     # MOT002: Acceso directo a campos del struct en archivos cliente mediante AST
-    impl_names = {f.name for f in implementation_files}
+    impl_names = {f.name for f in valid_impls}
     parser = get_c_parser()
 
-    for client in client_files:
+    for client in valid_clients:
         if client.name in impl_names:
             continue
 

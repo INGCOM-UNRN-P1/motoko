@@ -62,3 +62,25 @@ def test_ripley_plugin(tmp_path):
     res = plugin.run({"source_dir": str(tmp_path)})
     assert res["passed"] is True
     assert "violations" in res
+    assert "observaciones" in res
+
+
+def test_cli_check_directory_without_headers(tmp_path):
+    # Un directorio con sólo código C sin cabeceras no debe fallar
+    c_file = tmp_path / "main.c"
+    c_file.write_text("int main(void) { return 0; }\n")
+    res = runner.invoke(app, ["check", str(tmp_path), "--json"])
+    assert res.exit_code == 0
+    assert '"passed": true' in res.output
+    assert '"violations": []' in res.output
+
+
+def test_cli_check_directory_with_headers_and_clients(tmp_path):
+    h = tmp_path / "pila.h"
+    h.write_text("typedef struct s_pila t_pila;\n")
+    c = tmp_path / "main.c"
+    c.write_text("#include \"pila.h\"\nint main(void) { return 0; }\n")
+    res = runner.invoke(app, ["check", str(tmp_path), "--json"])
+    assert res.exit_code == 0
+    assert '"passed": true' in res.output
+

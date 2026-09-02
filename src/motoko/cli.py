@@ -39,20 +39,44 @@ def generar_seccion_markdown(report: TdaAuditReport) -> str:
 @app.command("verify")
 @app.command("check")
 def verify(
-    headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) que definen TDAs"),
+    headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) o directorios a analizar"),
     clients: List[Path] = typer.Option([], "--client", "-c", help="Archivos cliente (.c) que usan el TDA"),
     impls: List[Path] = typer.Option([], "--impl", "-i", help="Archivos de implementación (.c) del TDA"),
     json_output: bool = typer.Option(False, "--json", help="Emitir salida en formato JSON estructurado"),
     output_md: Optional[Path] = typer.Option(None, "--md", "--output-md", help="Generar sección de reporte en formato Markdown para fusión en Dredd."),
 ):
     """Verifica que los TDAs sean opacos y no sufran accesos directos a sus campos internos."""
-    # Si no se pasan clientes explícitos, buscar .c en los directorios de los headers
-    if not clients:
-        for h in headers:
-            parent = h.parent
-            clients.extend(list(parent.glob("*.c")))
+    actual_headers: List[Path] = []
+    discovered_clients: List[Path] = list(clients)
+    discovered_impls: List[Path] = list(impls)
 
-    report = audit_tda_encapsulation(headers, clients, impls)
+    for item in headers:
+        if item.is_dir():
+            actual_headers.extend(sorted(item.glob("**/*.h")))
+            if not clients:
+                discovered_clients.extend(sorted(item.glob("**/*.c")))
+        elif item.is_file():
+            if item.suffix in (".h", ".hpp"):
+                actual_headers.append(item)
+            elif item.suffix in (".c", ".cpp"):
+                if not clients:
+                    discovered_clients.append(item)
+                actual_headers.extend(sorted(item.parent.glob("*.h")))
+
+    # Si no se pasaron clientes explícitos y tenemos headers, buscar .c en los directorios de los headers
+    if not discovered_clients:
+        for h in actual_headers:
+            parent = h.parent
+            discovered_clients.extend(list(parent.glob("*.c")))
+
+    # Desduplicar manteniendo orden
+    actual_headers = list(dict.fromkeys(actual_headers))
+    discovered_clients = list(dict.fromkeys(discovered_clients))
+
+    if not actual_headers:
+        report = TdaAuditReport(tdas_analyzed=[], violations=[], passed=True)
+    else:
+        report = audit_tda_encapsulation(actual_headers, discovered_clients, discovered_impls)
 
     if output_md:
         md_text = generar_seccion_markdown(report)
