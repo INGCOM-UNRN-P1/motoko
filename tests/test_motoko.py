@@ -84,3 +84,14 @@ def test_cli_check_directory_with_headers_and_clients(tmp_path):
     assert res.exit_code == 0
     assert '"passed": true' in res.output
 
+
+def test_motoko_d0201_corpus_real_sin_crash():
+    """Verifica que auditar archivos del corpus bitmaps no arroje SIGABRT ni SIGSEGV (MOTOKO-D0201)."""
+    bitmap_dir = Path(__file__).resolve().parents[2] / "librerias" / "bitmaps" / "bitmap"
+    if bitmap_dir.is_dir():
+        res = runner.invoke(app, ["check", str(bitmap_dir), "--json"])
+        # Debe completar normalmente (exit_code 0 o 1 según violaciones, nunca 134 ni 139)
+        assert res.exit_code in (0, 1)
+        assert "passed" in res.output
+
+

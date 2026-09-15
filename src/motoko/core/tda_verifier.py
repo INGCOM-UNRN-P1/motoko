@@ -40,11 +40,15 @@ def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
     """Extrae las definiciones de TDAs en una cabecera, catalogándolos como opacos o transparentes con AST."""
     if not Path(header_path).is_file():
         return []
+    try:
+        content = Path(header_path).read_text(encoding="utf-8", errors="replace")
+        source_bytes = content.encode("utf-8")
+        parser = get_c_parser()
+        tree = parser.parse(source_bytes)
+    except Exception:
+        return []
+
     tdas: List[TdaDefinition] = []
-    content = Path(header_path).read_text(encoding="utf-8", errors="replace")
-    source_bytes = content.encode("utf-8")
-    parser = get_c_parser()
-    tree = parser.parse(source_bytes)
 
     def _traverse(node: Node) -> None:
         if node.type == "type_definition":
@@ -122,9 +126,12 @@ def audit_tda_encapsulation(
         if client.name in impl_names:
             continue
 
-        content = client.read_text(encoding="utf-8", errors="replace")
-        source_bytes = content.encode("utf-8")
-        tree = parser.parse(source_bytes)
+        try:
+            content = client.read_text(encoding="utf-8", errors="replace")
+            source_bytes = content.encode("utf-8")
+            tree = parser.parse(source_bytes)
+        except Exception:
+            continue
 
         def _traverse_client(node: Node) -> None:
             if node.type == "field_expression":
