@@ -1,5 +1,6 @@
 """Tests unitarios y de integración para MOTOKO."""
 
+import json
 from pathlib import Path
 from typer.testing import CliRunner
 from motoko.cli import app
@@ -7,6 +8,18 @@ from motoko.core.tda_verifier import extract_tdas_from_header, audit_tda_encapsu
 from motoko.plugins.ripley_plugin import MotokoPlugin
 
 runner = CliRunner()
+
+
+def test_cli_doctor():
+    res = runner.invoke(app, ["doctor"])
+    assert res.exit_code == 0
+    assert "doctor" in res.output.lower()
+
+    res_json = runner.invoke(app, ["doctor", "--json"])
+    assert res_json.exit_code == 0
+    data = json.loads(res_json.output)
+    assert data["herramienta"] == "motoko"
+    assert data["ok"] is True
 
 
 def test_extract_opaque_and_transparent_tdas(tmp_path):
