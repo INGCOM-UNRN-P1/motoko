@@ -20,7 +20,10 @@ console = Console()
 
 def generar_seccion_markdown(report: TdaAuditReport) -> str:
     """Genera sección de auditoría de encapsulamiento de TDAs para Dredd."""
-    lines = ["## Encapsulamiento y Opacidad de TDAs (Motoko)\n"]
+    lines = [
+        "<!-- dredd-section: motoko v1.0.0 -->\n",
+        "## Encapsulamiento y Opacidad de TDAs (Motoko)\n",
+    ]
     lines.append(f"- **TDAs analizados:** {len(report.tdas_analyzed)}")
     lines.append(f"- **Violaciones de encapsulamiento:** {len(report.violations)}\n")
     if report.passed:
@@ -31,7 +34,10 @@ def generar_seccion_markdown(report: TdaAuditReport) -> str:
         lines.append("| :--- | :--- | :---: | :---: | :--- | :--- |")
         for v in report.violations:
             loc = f"`{Path(v.file_path).name}:{v.line_number}`"
-            lines.append(f"| `{v.tda_name}` | {loc} | `{v.code}` | **{v.severity}** | {v.message} | {v.suggestion} |")
+            tda_limpio = v.tda_name.replace("|", "&#124;")
+            msg_limpio = v.message.replace("|", "&#124;")
+            sug_limpio = v.suggestion.replace("|", "&#124;")
+            lines.append(f"| `{tda_limpio}` | {loc} | `{v.code}` | **{v.severity}** | {msg_limpio} | {sug_limpio} |")
         lines.append("")
     return "\n".join(lines)
 

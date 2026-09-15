@@ -23,6 +23,7 @@ class EncapsulationViolation(BaseModel):
 
 
 class TdaAuditReport(BaseModel):
+    schema_version: str = "1.0.0"
     tdas_analyzed: List[TdaDefinition] = Field(default_factory=list)
     violations: List[EncapsulationViolation] = Field(default_factory=list)
     passed: bool = True
