@@ -9,6 +9,7 @@ class TdaDefinition(BaseModel):
     is_opaque: bool = True
     header_path: str
     declared_fields: List[str] = Field(default_factory=list)
+    line_number: int = 1
 
 
 class EncapsulationViolation(BaseModel):

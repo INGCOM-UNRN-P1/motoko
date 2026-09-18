@@ -37,6 +37,48 @@ def _find_identifier(node: Node) -> Optional[str]:
     return None
 
 
+def _tipo_base(texto: str) -> str:
+    """Limpia calificadores y punteros para quedarse con el nombre del tipo."""
+    for palabra in ("const", "struct", "volatile"):
+        texto = texto.replace(palabra, "")
+    return texto.replace("*", "").strip()
+
+
+def _recolectar_tipos_de_variables(root: Node) -> Dict[str, str]:
+    """Mapea cada variable/parámetro a su tipo declarado, para saber a qué TDA
+    pertenece realmente un `->campo` en vez de asumirlo por el nombre del campo.
+    """
+    tipos: Dict[str, str] = {}
+
+    def _registrar(type_node: Optional[Node], declarador: Optional[Node]) -> None:
+        if type_node is None or declarador is None:
+            return
+        if declarador.type == "init_declarator":
+            declarador = declarador.child_by_field_name("declarator")
+        if declarador is None:
+            return
+        nombre = _find_identifier(declarador)
+        tipo = _tipo_base(type_node.text.decode("utf-8", errors="replace"))
+        if nombre and tipo:
+            tipos[nombre] = tipo
+
+    def _traverse(node: Node) -> None:
+        if node.type == "parameter_declaration":
+            _registrar(node.child_by_field_name("type"), node.child_by_field_name("declarator"))
+        elif node.type == "declaration":
+            type_node = node.child_by_field_name("type")
+            for hijo in node.children:
+                if hijo is type_node or hijo.type in (";", ","):
+                    continue
+                _registrar(type_node, hijo)
+
+        for child in node.children:
+            _traverse(child)
+
+    _traverse(root)
+    return tipos
+
+
 def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
     """Extrae las definiciones de TDAs en una cabecera, catalogándolos como opacos o transparentes con AST."""
     if not Path(header_path).is_file():
@@ -73,7 +115,8 @@ def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
                         name=ident,
                         is_opaque=False,
                         header_path=str(header_path),
-                        declared_fields=fields
+                        declared_fields=fields,
+                        line_number=node.start_point.row + 1,
                     ))
                 else:
                     tdas.append(TdaDefinition(
@@ -114,7 +157,7 @@ def audit_tda_encapsulation(
                 severity="WARNING",
                 tda_name=tda.name,
                 file_path=tda.header_path,
-                line_number=1,
+                line_number=tda.line_number,
                 line_content=f"typedef struct {{ ... }} {tda.name};",
                 message=f"El TDA '{tda.name}' expone sus campos internos en la cabecera pública {Path(tda.header_path).name}.",
                 suggestion=f"Hacé el TDA opaco: declará 'typedef struct s_{tda.name} t_{tda.name};' en el .h y definí el struct completo dentro del .c de implementación."
@@ -136,25 +179,41 @@ def audit_tda_encapsulation(
         except Exception:
             continue
 
+        tipos_variables = _recolectar_tipos_de_variables(tree.root_node)
+
         def _traverse_client(node: Node) -> None:
             if node.type == "field_expression":
                 field_node = node.child_by_field_name("field")
+                arg_node = node.child_by_field_name("argument")
+                # Si el argumento es un identificador simple y se conoce su
+                # tipo declarado, la coincidencia de nombre de campo solo
+                # cuenta cuando el tipo es EL de este TDA. Sin esto, `c->tope`
+                # con `c: Contador` se marcaba como violación de un TDA
+                # "Pila" no relacionado, por la sola coincidencia de nombre
+                # de campo. Cuando el argumento es una expresión más compleja
+                # (llamada, member chain) y no se puede resolver el tipo, se
+                # conserva el chequeo por nombre para no perder detecciones.
+                tipo_arg = tipos_variables.get(arg_node.text.decode("utf-8", errors="replace")) if arg_node and arg_node.type == "identifier" else None
                 if field_node:
                     field_name = field_node.text.decode("utf-8", errors="replace")
                     for tda in all_tdas:
-                        if field_name in tda.declared_fields:
-                            line_no = node.start_point.row + 1
-                            raw_expr = node.text.decode("utf-8", errors="replace")
-                            violations.append(EncapsulationViolation(
-                                code="MOT002",
-                                severity="ERROR",
-                                tda_name=tda.name,
-                                file_path=str(client),
-                                line_number=line_no,
-                                line_content=raw_expr,
-                                message=f"Violación de encapsulamiento: Acceso directo al campo '{field_name}' del TDA '{tda.name}' en archivo cliente {client.name}.",
-                                suggestion=f"Utilizá las primitivas públicas del TDA en lugar de desreferenciar campos internos directamente ('{raw_expr}')."
-                            ))
+                        if field_name not in tda.declared_fields:
+                            continue
+                        if tipo_arg is not None and tipo_arg != tda.name:
+                            continue
+
+                        line_no = node.start_point.row + 1
+                        raw_expr = node.text.decode("utf-8", errors="replace")
+                        violations.append(EncapsulationViolation(
+                            code="MOT002",
+                            severity="ERROR",
+                            tda_name=tda.name,
+                            file_path=str(client),
+                            line_number=line_no,
+                            line_content=raw_expr,
+                            message=f"Violación de encapsulamiento: Acceso directo al campo '{field_name}' del TDA '{tda.name}' en archivo cliente {client.name}.",
+                            suggestion=f"Utilizá las primitivas públicas del TDA en lugar de desreferenciar campos internos directamente ('{raw_expr}')."
+                        ))
 
             for child in node.children:
                 _traverse_client(child)
