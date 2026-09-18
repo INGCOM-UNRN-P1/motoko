@@ -9,6 +9,7 @@ import tree_sitter_c as tsc
 from tree_sitter import Language, Parser, Node
 
 from motoko.core.models import TdaDefinition, EncapsulationViolation, TdaAuditReport
+from motoko.core.preprocesador import enmascarar_bloques_inactivos
 
 _C_LANGUAGE: Optional[Language] = None
 _PARSER: Optional[Parser] = None
@@ -42,6 +43,7 @@ def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
         return []
     try:
         content = Path(header_path).read_text(encoding="utf-8", errors="replace")
+        content = enmascarar_bloques_inactivos(content)
         source_bytes = content.encode("utf-8")
         parser = get_c_parser()
         tree = parser.parse(source_bytes)
@@ -128,6 +130,7 @@ def audit_tda_encapsulation(
 
         try:
             content = client.read_text(encoding="utf-8", errors="replace")
+            content = enmascarar_bloques_inactivos(content)
             source_bytes = content.encode("utf-8")
             tree = parser.parse(source_bytes)
         except Exception:
