@@ -63,7 +63,7 @@ def test_cli_verify_json(tmp_path):
 
 
 def test_cli_version():
-    res = runner.invoke(app, ["version"])
+    res = runner.invoke(app, ["--version"])
     assert res.exit_code == 0
     assert "MOTOKO" in res.output
 
@@ -108,3 +108,31 @@ def test_motoko_d0201_corpus_real_sin_crash():
         assert "passed" in res.output
 
 
+
+
+def _proyecto_con_violacion(tmp_path):
+    (tmp_path / "lista.h").write_text("typedef struct { int cantidad; void* primero; } t_lista;\n")
+    (tmp_path / "main.c").write_text('#include "lista.h"\nvoid f(t_lista* l) { int c = l->cantidad; }\n')
+
+
+def test_report_sale_1_si_hay_violaciones(tmp_path):
+    """MOTOKO-D0402: report ya no sale siempre 0 (igual que verify)."""
+    _proyecto_con_violacion(tmp_path)
+    res = runner.invoke(app, ["report", str(tmp_path / "lista.h"), "-o", str(tmp_path / "r.md")])
+    assert res.exit_code == 1
+    assert (tmp_path / "r.md").is_file()
+
+
+def test_version_ya_no_es_subcomando():
+    res = runner.invoke(app, ["version"])
+    assert res.exit_code != 0
+
+
+def test_audit_all_audita_todo_el_proyecto(tmp_path):
+    """MOTOKO-D1001: `audit-all <directorio>` valida todos los TDAs del proyecto."""
+    _proyecto_con_violacion(tmp_path)
+    assert runner.invoke(app, ["audit-all", str(tmp_path)]).exit_code == 1
+    limpio = tmp_path / "ok"
+    limpio.mkdir()
+    (limpio / "pila.h").write_text("typedef struct s_pila t_pila;\n")
+    assert runner.invoke(app, ["audit-all", str(limpio)]).exit_code == 0

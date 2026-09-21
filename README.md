@@ -41,8 +41,15 @@ motoko verify tda_pila.h
 # Especificar archivo cliente e implementación
 motoko verify tda_pila.h --client main.c --impl tda_pila.c
 
+# Auditar todos los TDAs de un proyecto (directorio) de una vez
+motoko audit-all proyecto/
+
 # Salida estructurada JSON
 motoko verify tda_pila.h --json
+
+# Versión (opción global) y sección de reporte para Dredd (exit 1 si hay violaciones)
+motoko --version
+motoko report tda_pila.h -o motoko.md
 ```
 
 ---

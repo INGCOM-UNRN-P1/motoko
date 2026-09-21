@@ -18,6 +18,23 @@ app = typer.Typer(
 console = Console()
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from motoko import __version__
+        console.print(f"[bold cyan]MOTOKO[/bold cyan] versión [green]{__version__}[/green]")
+        raise typer.Exit(code=0)
+
+
+@app.callback()
+def main_callback(
+    version: Optional[bool] = typer.Option(
+        None, "--version", "-v", help="Muestra la versión de MOTOKO.",
+        callback=_version_callback, is_eager=True,
+    ),
+) -> None:
+    pass
+
+
 def generar_seccion_markdown(report: TdaAuditReport) -> str:
     """Genera sección de auditoría de encapsulamiento de TDAs para Dredd."""
     lines = [
@@ -44,6 +61,7 @@ def generar_seccion_markdown(report: TdaAuditReport) -> str:
 
 @app.command("verify")
 @app.command("check")
+@app.command("audit-all")
 def verify(
     headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) o directorios a analizar"),
     clients: List[Path] = typer.Option([], "--client", "-c", help="Archivos cliente (.c) que usan el TDA"),
@@ -51,7 +69,10 @@ def verify(
     json_output: bool = typer.Option(False, "--json", help="Emitir salida en formato JSON estructurado"),
     output_md: Optional[Path] = typer.Option(None, "--md", "--output-md", help="Generar sección de reporte en formato Markdown para fusión en Dredd."),
 ):
-    """Verifica que los TDAs sean opacos y no sufran accesos directos a sus campos internos."""
+    """Verifica que los TDAs sean opacos y no sufran accesos directos a sus campos internos.
+
+    Con un directorio como argumento audita todos los TDAs del proyecto (`audit-all`).
+    """
     actual_headers: List[Path] = []
     discovered_clients: List[Path] = list(clients)
     discovered_impls: List[Path] = list(impls)
@@ -161,6 +182,8 @@ def report_cmd(
         console.print(f"[bold green]✓ Reporte Markdown generado en:[/bold green] {output}")
     else:
         print(md_content)
+    if not report.passed:
+        raise typer.Exit(code=1)
 
 
 @app.command("doctor")
@@ -228,13 +251,6 @@ def doctor_cmd(
     console.print(tabla)
     if not todo_ok:
         raise typer.Exit(code=1)
-
-
-@app.command()
-def version():
-    """Muestra la versión de MOTOKO."""
-    from motoko import __version__
-    console.print(f"[bold cyan]MOTOKO[/bold cyan] versión [green]{__version__}[/green]")
 
 
 if __name__ == "__main__":
