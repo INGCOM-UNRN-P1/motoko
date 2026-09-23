@@ -37,8 +37,9 @@ def main_callback(
 
 def generar_seccion_markdown(report: TdaAuditReport) -> str:
     """Genera sección de auditoría de encapsulamiento de TDAs para Dredd."""
+    status = "ok" if report.passed else "fail"
     lines = [
-        "<!-- dredd-section: motoko v1.0.0 -->\n",
+        f"<!-- dredd-section: motoko, tool=motoko, version=1.0.0, status={status} -->\n",
         "## Encapsulamiento y Opacidad de TDAs (Motoko)\n",
     ]
     lines.append(f"- **TDAs analizados:** {len(report.tdas_analyzed)}")
