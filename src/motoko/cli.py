@@ -11,6 +11,7 @@ from motoko.core.models import TdaAuditReport
 from motoko.core.tda_verifier import audit_tda_encapsulation
 
 app = typer.Typer(
+    context_settings={"help_option_names": ["-h", "--help"]},
     name="motoko",
     help="Verificador de encapsulamiento estricto y opacidad de TDAs en C",
     add_completion=True
