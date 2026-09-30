@@ -4,36 +4,24 @@ import json
 from pathlib import Path
 from typing import List, Optional
 import typer
+from yutani.cli import crear_app
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+from motoko import __version__
 from motoko.core.models import TdaAuditReport
 from motoko.core.tda_verifier import audit_tda_encapsulation
 
-app = typer.Typer(
-    context_settings={"help_option_names": ["-h", "--help"]},
-    name="motoko",
-    help="Verificador de encapsulamiento estricto y opacidad de TDAs en C",
-    add_completion=True
+# Contrato de línea de comandos del ecosistema (-h/--help, --version/-v, errores de datos como
+# mensajes) y textos de Typer en español, desde yutani (N-ECO-14).
+app = crear_app(
+    "motoko",
+    __version__,
+    "Verificador de encapsulamiento estricto y opacidad de TDAs en C",
+    add_completion=True,
+    no_args_is_help=False,
 )
 console = Console()
-
-
-def _version_callback(value: bool) -> None:
-    if value:
-        from motoko import __version__
-        console.print(f"[bold cyan]MOTOKO[/bold cyan] versión [green]{__version__}[/green]")
-        raise typer.Exit(code=0)
-
-
-@app.callback()
-def main_callback(
-    version: Optional[bool] = typer.Option(
-        None, "--version", "-v", help="Muestra la versión de MOTOKO.",
-        callback=_version_callback, is_eager=True,
-    ),
-) -> None:
-    pass
 
 
 def generar_seccion_markdown(report: TdaAuditReport) -> str:

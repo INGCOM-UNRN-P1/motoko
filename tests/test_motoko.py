@@ -65,7 +65,7 @@ def test_cli_verify_json(tmp_path):
 def test_cli_version():
     res = runner.invoke(app, ["--version"])
     assert res.exit_code == 0
-    assert "MOTOKO" in res.output
+    assert res.output.startswith("motoko ")  # formato común de yutani: «nombre versión»
 
 
 def test_ripley_plugin(tmp_path):
