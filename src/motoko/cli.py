@@ -65,7 +65,7 @@ def generar_seccion_markdown(report: TdaAuditReport) -> str:
 @app.command("check")
 @app.command("audit-all")
 def verify(
-    headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) o directorios a analizar"),
+    headers: List[Path] = typer.Argument(..., exists=True, help="Archivos de cabecera (.h) o directorios a analizar"),
     clients: List[Path] = typer.Option([], "--client", "-c", help="Archivos cliente (.c) que usan el TDA"),
     impls: List[Path] = typer.Option([], "--impl", "-i", help="Archivos de implementación (.c) del TDA"),
     json_output: bool = typer.Option(False, "--json", help="Emitir salida en formato JSON estructurado"),
@@ -165,7 +165,7 @@ def verify(
 
 @app.command("report")
 def report_cmd(
-    headers: List[Path] = typer.Argument(..., help="Archivos de cabecera (.h) que definen TDAs"),
+    headers: List[Path] = typer.Argument(..., exists=True, help="Archivos de cabecera (.h) que definen TDAs"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Ruta de destino del archivo Markdown."),
     clients: List[Path] = typer.Option([], "--client", "-c", help="Archivos cliente (.c) que usan el TDA"),
     impls: List[Path] = typer.Option([], "--impl", "-i", help="Archivos de implementación (.c) del TDA"),
