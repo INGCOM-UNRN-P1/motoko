@@ -60,3 +60,23 @@ motoko report tda_pila.h -o motoko.md
 
 - **`MOT001`**: TDAs que exponen sus campos dentro del `.h` público (debe usarse declaración incompleta).
 - **`MOT002`**: Código cliente que desreferencia directamente campos del TDA (`tda->campo`) en lugar de invocar primitivas públicas.
+
+<!-- p1:referencia:inicio — generado por p1-tools/scripts/readme_generado.py: no editar a mano -->
+
+## Referencia rápida
+
+### Requisitos
+
+- Python ≥ 3.11 y [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+### Comandos
+
+| Comando | Descripción |
+|:--|:--|
+| `motoko audit-all`, `motoko check`, `motoko verify` | Verifica que los TDAs sean opacos y no sufran accesos directos a sus campos internos. |
+| `motoko report` | Genera directamente la sección de reporte Markdown de MOTOKO para Dredd. |
+| `motoko doctor` | Verifica el estado del entorno de auditoría de TDAs MOTOKO (Tree-Sitter C, Python, GCC). |
+
+Ayuda de cada comando: `motoko <comando> -h`.
+
+<!-- p1:referencia:fin -->
