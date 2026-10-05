@@ -33,6 +33,8 @@ def generar_seccion_markdown(report: TdaAuditReport) -> str:
     ]
     lines.append(f"- **TDAs analizados:** {len(report.tdas_analyzed)}")
     lines.append(f"- **Violaciones de encapsulamiento:** {len(report.violations)}\n")
+    for frase in report.resumen:
+        lines.append(f"> {frase}\n")
     if report.passed:
         lines.append("> [!TIP]\n> **Encapsulamiento Estricto:** Los Tipos de Datos Abstractos respetan la opacidad y no exponen su estructura interna a los clientes.\n")
     else:
@@ -129,6 +131,8 @@ def verify(
         ))
         return
 
+    for frase in report.resumen:
+        console.print(f"• {frase}")
     table = Table(title="Auditoría de Encapsulamiento y Opacidad de TDAs", show_header=True, header_style="bold magenta")
     table.add_column("Código", style="cyan", width=8)
     table.add_column("Sev", style="bold", width=8)

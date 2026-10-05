@@ -12,6 +12,8 @@
 - Verificación estática de encapsulamiento y tipos opacos en Tipos de Datos Abstractos (TDAs) de C.
 - Regla `MOT001`: Verificación de que la definición completa de estructuras de datos (`struct`) resida exclusivamente en archivos de implementación (`.c`), manteniendo únicamente declaraciones incompletas (`typedef struct tda tda_t;`) en archivos de cabecera (`.h`).
 - Regla `MOT002`: Prohibición estricta de desreferencia directa de campos privados en archivos cliente.
+- Regla `MOT003`: Funciones públicas que devuelven punteros a la memoria interna del TDA.
+- Un resumen por TDA en el lenguaje de la consigna («Tu TDA Pila expone 2 campos en pila.h (tope, datos) y el código cliente los usa directamente en main.c:12»), en la salida, el JSON (`resumen`) y la sección Markdown.
 - Manejo defensivo y resiliente de entregas y carpetas de estudiantes sin archivos `.h`.
 
 ### Qué no cubre (Límites y Delegación)
@@ -60,6 +62,7 @@ motoko report tda_pila.h -o motoko.md
 
 - **`MOT001`**: TDAs que exponen sus campos dentro del `.h` público (debe usarse declaración incompleta).
 - **`MOT002`**: Código cliente que desreferencia directamente campos del TDA (`tda->campo`) en lugar de invocar primitivas públicas.
+- **`MOT003`**: Función pública (declarada en el `.h`) que devuelve un puntero no `const` a la memoria interna: la dirección de un campo (`return &p->tope;`, error) o un campo arreglo o puntero (`return p->datos;`, advertencia). Un `const char *` de solo lectura no se marca.
 
 <!-- p1:referencia:inicio — generado por p1-tools/scripts/readme_generado.py: no editar a mano -->
 

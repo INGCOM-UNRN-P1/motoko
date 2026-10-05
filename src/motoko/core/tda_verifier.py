@@ -220,11 +220,16 @@ def audit_tda_encapsulation(
 
         _traverse_client(tree.root_node)
 
+    # MOT003: funciones públicas que devuelven punteros a la memoria interna (QoL #670)
+    from motoko.core.interna import punteros_internos
+
+    violations.extend(punteros_internos(valid_headers, valid_impls, parser))
+
     opaque_count = sum(1 for t in all_tdas if t.is_opaque)
     transparent_count = sum(1 for t in all_tdas if not t.is_opaque)
     passed = not any(v.severity == "ERROR" for v in violations)
 
-    return TdaAuditReport(
+    report = TdaAuditReport(
         passed=passed,
         tdas_analyzed=all_tdas,
         opaque_tdas_count=opaque_count,
@@ -232,3 +237,7 @@ def audit_tda_encapsulation(
         violations_count=len(violations),
         violations=violations
     )
+    from motoko.core.interna import resumen_para_el_estudiante
+
+    report.resumen = resumen_para_el_estudiante(report)
+    return report
