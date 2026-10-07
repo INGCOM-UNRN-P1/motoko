@@ -181,7 +181,7 @@ def audit_tda_encapsulation(
 
         tipos_variables = _recolectar_tipos_de_variables(tree.root_node)
 
-        def _traverse_client(node: Node) -> None:
+        def _traverse_client(node: Node, client: Path = client, tipos_variables: dict = tipos_variables) -> None:
             if node.type == "field_expression":
                 field_node = node.child_by_field_name("field")
                 arg_node = node.child_by_field_name("argument")
