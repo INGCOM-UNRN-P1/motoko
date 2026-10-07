@@ -28,5 +28,8 @@ class TdaAuditReport(BaseModel):
     tdas_analyzed: List[TdaDefinition] = Field(default_factory=list)
     violations: List[EncapsulationViolation] = Field(default_factory=list)
     passed: bool = True
+    opaque_tdas_count: int = 0
+    transparent_tdas_count: int = 0
+    violations_count: int = 0
     # Una oración por TDA para el estudiante («tu TDA Pila expone 3 campos en pila.h…»).
     resumen: List[str] = Field(default_factory=list)

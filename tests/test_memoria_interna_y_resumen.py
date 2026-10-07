@@ -26,3 +26,11 @@ def test_resumen_para_el_estudiante(tmp_path):
     r = audit_tda_encapsulation([tmp_path / "pila.h"], [tmp_path / "main.c"], [tmp_path / "pila.c"])
     assert r.resumen[0].startswith("Tu TDA Pila expone 2 campos en pila.h (tope, datos)")
     assert "main.c:2" in r.resumen[0]
+
+
+def test_el_informe_trae_los_conteos():
+    """Los conteos se pasaban al modelo pero pydantic los descartaba (no eran campos)."""
+    r = audit_tda_encapsulation([DATOS / "pila.h"], [DATOS / "main.c"], [DATOS / "pila.c"])
+    assert r.violations_count == len(r.violations) > 0
+    assert r.opaque_tdas_count + r.transparent_tdas_count == len(r.tdas_analyzed)
+    assert "violations_count" in r.model_dump()

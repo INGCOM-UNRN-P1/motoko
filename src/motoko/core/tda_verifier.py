@@ -26,10 +26,10 @@ def get_c_parser() -> Parser:
 def _find_identifier(node: Node) -> Optional[str]:
     """Encuentra el identificador dentro de un declarador AST."""
     if node.type in ("identifier", "type_identifier", "field_identifier"):
-        return node.text.decode("utf-8", errors="replace")
+        return (node.text or b"").decode("utf-8", errors="replace")
     for child in node.children:
         if child.type in ("identifier", "type_identifier", "field_identifier"):
-            return child.text.decode("utf-8", errors="replace")
+            return (child.text or b"").decode("utf-8", errors="replace")
         elif child.type in ("pointer_declarator", "array_declarator", "parenthesized_declarator"):
             res = _find_identifier(child)
             if res:
@@ -58,7 +58,7 @@ def _recolectar_tipos_de_variables(root: Node) -> Dict[str, str]:
         if declarador is None:
             return
         nombre = _find_identifier(declarador)
-        tipo = _tipo_base(type_node.text.decode("utf-8", errors="replace"))
+        tipo = _tipo_base((type_node.text or b"").decode("utf-8", errors="replace"))
         if nombre and tipo:
             tipos[nombre] = tipo
 
@@ -193,9 +193,9 @@ def audit_tda_encapsulation(
                 # de campo. Cuando el argumento es una expresión más compleja
                 # (llamada, member chain) y no se puede resolver el tipo, se
                 # conserva el chequeo por nombre para no perder detecciones.
-                tipo_arg = tipos_variables.get(arg_node.text.decode("utf-8", errors="replace")) if arg_node and arg_node.type == "identifier" else None
+                tipo_arg = tipos_variables.get((arg_node.text or b"").decode("utf-8", errors="replace")) if arg_node and arg_node.type == "identifier" else None
                 if field_node:
-                    field_name = field_node.text.decode("utf-8", errors="replace")
+                    field_name = (field_node.text or b"").decode("utf-8", errors="replace")
                     for tda in all_tdas:
                         if field_name not in tda.declared_fields:
                             continue
@@ -203,7 +203,7 @@ def audit_tda_encapsulation(
                             continue
 
                         line_no = node.start_point.row + 1
-                        raw_expr = node.text.decode("utf-8", errors="replace")
+                        raw_expr = (node.text or b"").decode("utf-8", errors="replace")
                         violations.append(EncapsulationViolation(
                             code="MOT002",
                             severity="ERROR",
