@@ -10,6 +10,11 @@ class TdaDefinition(BaseModel):
     header_path: str
     declared_fields: List[str] = Field(default_factory=list)
     line_number: int = 1
+    # TDA opaco (`typedef struct s_pila Pila;`): la etiqueta del struct y los campos que define la
+    # implementación, que el cliente no puede tocar (Ola 17).
+    struct_tag: Optional[str] = None
+    private_fields: List[str] = Field(default_factory=list)
+    impl_path: Optional[str] = None
 
 
 class EncapsulationViolation(BaseModel):

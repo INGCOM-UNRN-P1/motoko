@@ -119,11 +119,14 @@ def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
                         line_number=node.start_point.row + 1,
                     ))
                 else:
+                    etiqueta = type_node.child_by_field_name("name")
                     tdas.append(TdaDefinition(
                         name=ident,
                         is_opaque=True,
                         header_path=str(header_path),
-                        declared_fields=[]
+                        declared_fields=[],
+                        line_number=node.start_point.row + 1,
+                        struct_tag=(etiqueta.text or b"").decode("utf-8", errors="replace") if etiqueta else None,
                     ))
 
         for child in node.children:
@@ -131,6 +134,56 @@ def extract_tdas_from_header(header_path: Path) -> List[TdaDefinition]:
 
     _traverse(tree.root_node)
     return tdas
+
+
+def _structs_con_cuerpo(root: Node) -> List[tuple]:
+    """(etiqueta o nombre del typedef, campos, línea) de cada struct definido con sus campos."""
+    encontrados = []
+    for node in _recorrer(root):
+        if node.type != "struct_specifier" or node.child_by_field_name("body") is None:
+            continue
+        nombre = node.child_by_field_name("name")
+        etiqueta = (nombre.text or b"").decode("utf-8", errors="replace") if nombre else None
+        if etiqueta is None and node.parent is not None and node.parent.type == "type_definition":
+            decl = node.parent.child_by_field_name("declarator")
+            etiqueta = _find_identifier(decl) if decl is not None else None
+        campos = []
+        for f in node.child_by_field_name("body").children:
+            if f.type == "field_declaration" and f.child_by_field_name("declarator") is not None:
+                campo = _find_identifier(f.child_by_field_name("declarator"))
+                if campo:
+                    campos.append(campo)
+        if etiqueta:
+            encontrados.append((etiqueta, campos, node.start_point.row + 1))
+    return encontrados
+
+
+def _recorrer(node: Node):
+    yield node
+    for hijo in node.children:
+        yield from _recorrer(hijo)
+
+
+def _parsear(ruta: Path, parser) -> Optional[Node]:
+    try:
+        contenido = enmascarar_bloques_inactivos(ruta.read_text(encoding="utf-8", errors="replace"))
+        return parser.parse(contenido.encode("utf-8")).root_node
+    except Exception:
+        return None
+
+
+def completar_campos_privados(tdas: List[TdaDefinition], impls: List[Path], parser) -> None:
+    """Los campos de cada TDA opaco, de la definición del struct en su implementación (Ola 17)."""
+    por_etiqueta = {t.struct_tag: t for t in tdas if t.is_opaque and t.struct_tag}
+    for impl in impls:
+        raiz = _parsear(impl, parser)
+        if raiz is None:
+            continue
+        for etiqueta, campos, _ in _structs_con_cuerpo(raiz):
+            tda = por_etiqueta.get(etiqueta)
+            if tda is not None and not tda.private_fields:
+                tda.private_fields = campos
+                tda.impl_path = str(impl)
 
 
 def audit_tda_encapsulation(
@@ -146,6 +199,12 @@ def audit_tda_encapsulation(
     all_tdas: List[TdaDefinition] = []
     for h in valid_headers:
         all_tdas.extend(extract_tdas_from_header(h))
+    parser = get_c_parser()
+    completar_campos_privados(all_tdas, valid_impls, parser)
+    from motoko.core.sugerencias import es_escritura, funciones_por_tda, sugerencia, valor_asignado
+
+    funciones = funciones_por_tda(valid_headers, all_tdas, parser)
+    opacos_por_etiqueta = {t.struct_tag: t for t in all_tdas if t.is_opaque and t.struct_tag and t.private_fields}
 
     violations: List[EncapsulationViolation] = []
 
@@ -165,7 +224,6 @@ def audit_tda_encapsulation(
 
     # MOT002: Acceso directo a campos del struct en archivos cliente mediante AST
     impl_names = {f.name for f in valid_impls}
-    parser = get_c_parser()
 
     for client in valid_clients:
         if client.name in impl_names:
@@ -180,8 +238,28 @@ def audit_tda_encapsulation(
             continue
 
         tipos_variables = _recolectar_tipos_de_variables(tree.root_node)
+        # MOT004: el cliente copia la definición privada del struct para poder tocar sus campos.
+        campos_propios: Set[str] = set()
+        for etiqueta, campos, linea in _structs_con_cuerpo(tree.root_node):
+            tda_opaco = opacos_por_etiqueta.get(etiqueta)
+            if tda_opaco is None:
+                campos_propios.update(campos)
+                continue
+            violations.append(EncapsulationViolation(
+                code="MOT004",
+                severity="ERROR",
+                tda_name=tda_opaco.name,
+                file_path=str(client),
+                line_number=linea,
+                line_content=f"struct {etiqueta} {{ ... }}",
+                message=(f"El archivo cliente {client.name} redefine el struct privado '{etiqueta}' del TDA opaco "
+                         f"'{tda_opaco.name}' (se define en {Path(tda_opaco.impl_path or '').name}) para acceder a sus campos."),
+                suggestion=(f"Borrá esa definición e incluí sólo {Path(tda_opaco.header_path).name}: el cliente usa "
+                            f"{tda_opaco.name} a través de sus funciones públicas."),
+            ))
 
-        def _traverse_client(node: Node, client: Path = client, tipos_variables: dict = tipos_variables) -> None:
+        def _traverse_client(node: Node, client: Path = client, tipos_variables: dict = tipos_variables,
+                             campos_propios: Set[str] = campos_propios) -> None:
             if node.type == "field_expression":
                 field_node = node.child_by_field_name("field")
                 arg_node = node.child_by_field_name("argument")
@@ -197,13 +275,21 @@ def audit_tda_encapsulation(
                 if field_node:
                     field_name = (field_node.text or b"").decode("utf-8", errors="replace")
                     for tda in all_tdas:
-                        if field_name not in tda.declared_fields:
+                        campos = tda.private_fields if tda.is_opaque else tda.declared_fields
+                        if field_name not in campos:
                             continue
-                        if tipo_arg is not None and tipo_arg != tda.name:
+                        if tipo_arg is not None and tipo_arg not in (tda.name, tda.struct_tag):
+                            continue
+                        # Con un TDA opaco y el tipo sin resolver, un campo homónimo de un struct del
+                        # propio cliente no es un acceso al TDA.
+                        if tipo_arg is None and tda.is_opaque and field_name in campos_propios:
                             continue
 
                         line_no = node.start_point.row + 1
                         raw_expr = (node.text or b"").decode("utf-8", errors="replace")
+                        operador = node.child_by_field_name("operator")
+                        donde = (f"privado (se define en {Path(tda.impl_path or '').name})" if tda.is_opaque
+                                 else "interno")
                         violations.append(EncapsulationViolation(
                             code="MOT002",
                             severity="ERROR",
@@ -211,8 +297,11 @@ def audit_tda_encapsulation(
                             file_path=str(client),
                             line_number=line_no,
                             line_content=raw_expr,
-                            message=f"Violación de encapsulamiento: Acceso directo al campo '{field_name}' del TDA '{tda.name}' en archivo cliente {client.name}.",
-                            suggestion=f"Utilizá las primitivas públicas del TDA en lugar de desreferenciar campos internos directamente ('{raw_expr}')."
+                            message=f"Violación de encapsulamiento: acceso directo al campo {donde} '{field_name}' del TDA '{tda.name}' en el archivo cliente {client.name} ('{raw_expr}').",
+                            suggestion=sugerencia(tda.name, field_name,
+                                                  (operador.text or b"->").decode() if operador is not None else "->",
+                                                  (arg_node.text or b"").decode("utf-8", errors="replace") if arg_node else "",
+                                                  es_escritura(node), funciones, valor_asignado(node)),
                         ))
 
             for child in node.children:
