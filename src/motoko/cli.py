@@ -65,44 +65,9 @@ def verify(
 
     Con un directorio como argumento audita todos los TDAs del proyecto (`audit-all`).
     """
-    actual_headers: List[Path] = []
-    discovered_clients: List[Path] = list(clients)
-    discovered_impls: List[Path] = list(impls)
+    from motoko.core.descubrimiento import clasificar
 
-    for item in headers:
-        if item.is_dir():
-            actual_headers.extend(sorted(item.glob("**/*.h")))
-            if not clients:
-                discovered_clients.extend(sorted(item.glob("**/*.c")))
-        elif item.is_file():
-            if item.suffix in (".h", ".hpp"):
-                actual_headers.append(item)
-            elif item.suffix in (".c", ".cpp"):
-                if not clients:
-                    discovered_clients.append(item)
-                actual_headers.extend(sorted(item.parent.glob("*.h")))
-
-    # Si no se pasaron clientes explícitos y tenemos headers, buscar .c en los directorios de los headers
-    if not discovered_clients:
-        for h in actual_headers:
-            parent = h.parent
-            discovered_clients.extend(list(parent.glob("*.c")))
-
-    # Si no se pasó `--impl`, el .c cuyo nombre coincide con el de un header
-    # (convención `pila.h` + `pila.c`) es casi siempre la implementación del
-    # TDA, no un cliente. Sin excluirlo, el modo directorio por defecto lo
-    # auditaba como cliente y sus accesos legítimos a los campos internos
-    # (`p->tope` dentro de `pila.c`) se reportaban como violaciones.
-    if not discovered_impls:
-        stems_headers = {h.stem for h in actual_headers}
-        discovered_impls = [c for c in discovered_clients if c.stem in stems_headers]
-
-    discovered_clients = [c for c in discovered_clients if c not in discovered_impls]
-
-    # Desduplicar manteniendo orden
-    actual_headers = list(dict.fromkeys(actual_headers))
-    discovered_clients = list(dict.fromkeys(discovered_clients))
-    discovered_impls = list(dict.fromkeys(discovered_impls))
+    actual_headers, discovered_clients, discovered_impls = clasificar(headers, clients, impls)
 
     if not actual_headers:
         report = TdaAuditReport(tdas_analyzed=[], violations=[], passed=True)

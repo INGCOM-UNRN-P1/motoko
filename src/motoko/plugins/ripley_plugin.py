@@ -22,10 +22,18 @@ class MotokoPlugin:
         raw_source = Path(context.get("source_dir") or context.get("workspace") or ".")
         source_dir = raw_source.parent if raw_source.is_file() else raw_source
 
-        headers = list(source_dir.glob("**/*.h"))
-        c_files = list(source_dir.glob("**/*.c"))
+        # La misma clasificación que la CLI: `pila.c` es la implementación de `pila.h` (no un cliente, y
+        # sin ella MOT003 no se veía), y la biblioteca de la cátedra (libs/) no es del estudiante.
+        from motoko.core.descubrimiento import clasificar
 
-        report = audit_tda_encapsulation(headers, c_files, [])
+        headers, clientes, impls = clasificar([source_dir])
+        report = audit_tda_encapsulation(headers, clientes, impls)
+
+        def relativa(ruta: str) -> str:
+            try:
+                return Path(ruta).resolve().relative_to(source_dir.resolve()).as_posix()
+            except ValueError:
+                return Path(ruta).name
 
         observaciones = [
             {
@@ -34,8 +42,8 @@ class MotokoPlugin:
                 "rule_name": f"Violación de Encapsulamiento TDA: {v.tda_name}",
                 "severidad": v.severity,
                 "severity": v.severity,
-                "archivo": Path(v.file_path).name,
-                "file": Path(v.file_path).name,
+                "archivo": relativa(v.file_path),
+                "file": relativa(v.file_path),
                 "linea": v.line_number,
                 "line": v.line_number,
                 "columna": 0,
@@ -61,7 +69,7 @@ class MotokoPlugin:
                     "code": v.code,
                     "severity": v.severity,
                     "tda": v.tda_name,
-                    "file": Path(v.file_path).name,
+                    "file": relativa(v.file_path),
                     "line": v.line_number,
                     "message": v.message,
                     "suggestion": v.suggestion,
